@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบริหารจัดการงาน ผปบ.พพ. - Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;800&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background-color: #e2e8f0; border: 1px solid #e2e8f0; }
+        .calendar-day { min-height: 120px; background-color: white; padding: 8px; transition: all 0.2s; position: relative; }
+        .calendar-day:hover { background-color: #f1f5f9; }
+        .task-card { font-size: 0.7rem; padding: 4px 6px; border-radius: 6px; margin-bottom: 4px; cursor: pointer; border-left: 3px solid; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        
+        .priority-high { border-right: 3px solid #ef4444; } /* แถบแดงขวาถ้าด่วน */
+        
+        .status-pending { background-color: #fffbeb; border-left-color: #f59e0b; color: #92400e; }
+        .status-progress { background-color: #e0f2fe; border-left-color: #0ea5e9; color: #075985; }
+        .status-done { background-color: #dcfce7; border-left-color: #22c55e; color: #166534; }
+        
+        .modal { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+        .modal.active { display: flex; }
+        
+        .file-preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 4px; margin-top: 6px; }
+        .file-item { position: relative; width: 50px; height: 50px; border-radius: 4px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .file-item img { width: 100%; height: 100%; object-fit: cover; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="max-w-7xl mx-auto p-4 lg:p-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <div class="flex items-center gap-3">
+            <div class="p-3 bg-indigo-600 rounded-xl text-white shadow-lg">
+                <i data-lucide="layout-dashboard" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-black text-slate-800 tracking-tight">ระบบบริหารจัดการงาน ผปบ.พพ.</h1>
+                <p class="text-slate-500 font-bold text-xs uppercase tracking-tighter">Performance Tracking & Task Management</p>
+            </div>
+        </div>
+        <div class="flex gap-2 w-full md:w-auto">
+            <button onclick="openModal('assign')" class="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 font-black text-sm transition-all shadow-md active:scale-95">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i> มอบหมายงาน
+            </button>
+            <button onclick="exportReport()" class="flex-1 md:flex-none bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 font-black text-sm">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-600"></i> ส่งออก Excel
+            </button>
+        </div>
+    </div>
+
+    <!-- Dashboard Quick Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-start">
+                <p class="text-slate-400 text-[10px] font-black uppercase">งานทั้งหมด</p>
+                <i data-lucide="briefcase" class="w-3.5 h-3.5 text-slate-300"></i>
+            </div>
+            <h3 id="dash-total" class="text-2xl font-black text-slate-800">0</h3>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 border-l-4 border-l-amber-400">
+            <p class="text-amber-500 text-[10px] font-black uppercase">รอดำเนินการ</p>
+            <h3 id="dash-pending" class="text-2xl font-black text-slate-800">0</h3>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 border-l-4 border-l-blue-400">
+            <p class="text-blue-500 text-[10px] font-black uppercase">ระหว่างทำ</p>
+            <h3 id="dash-progress" class="text-2xl font-black text-slate-800">0</h3>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 border-l-4 border-l-emerald-400">
+            <p class="text-emerald-500 text-[10px] font-black uppercase">เสร็จสมบูรณ์</p>
+            <h3 id="dash-done" class="text-2xl font-black text-slate-800">0</h3>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <!-- Sidebar & Filters -->
+        <div class="lg:col-span-1 space-y-4">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm">
+                    <i data-lucide="search" class="w-4 h-4 text-indigo-500"></i> ค้นหาและกรอง
+                </h3>
+                <div class="space-y-3">
+                    <input type="text" id="filterSearch" oninput="renderCalendar()" placeholder="ค้นหาชื่องาน/ผู้รับผิดชอบ..." class="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:border-indigo-500 outline-none">
+                    <select id="filterStatus" onchange="renderCalendar()" class="w-full text-xs border border-slate-200 rounded-lg p-2.5 font-bold bg-slate-50">
+                        <option value="all">แสดงสถานะทั้งหมด</option>
+                        <option value="pending">เฉพาะรอดำเนินการ</option>
+                        <option value="progress">เฉพาะระหว่างทำ</option>
+                        <option value="done">เฉพาะที่เสร็จแล้ว</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="font-black text-slate-800 mb-3 flex items-center gap-2 text-sm">
+                    <i data-lucide="users" class="w-4 h-4 text-indigo-500"></i> สายงาน (10 สายงาน)
+                </h3>
+                <div id="teamList" class="space-y-1.5 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar"></div>
+            </div>
+        </div>
+
+        <!-- Calendar Area -->
+        <div class="lg:col-span-3">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 flex justify-between items-center bg-white border-b border-slate-100">
+                    <div class="flex items-center gap-4">
+                        <select id="selectMonth" onchange="renderCalendar()" class="font-black text-slate-700 bg-transparent outline-none cursor-pointer"></select>
+                        <select id="selectYear" onchange="renderCalendar()" class="font-black text-slate-700 bg-transparent outline-none cursor-pointer"></select>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="changeMonth(-1)" class="p-1.5 hover:bg-slate-50 rounded-lg border border-slate-100"> <i data-lucide="chevron-left" class="w-4 h-4"></i> </button>
+                        <button onclick="changeMonth(1)" class="p-1.5 hover:bg-slate-50 rounded-lg border border-slate-100"> <i data-lucide="chevron-right" class="w-4 h-4"></i> </button>
+                    </div>
+                </div>
+                <div class="calendar-grid text-center font-black text-slate-400 text-[9px] uppercase tracking-[0.2em] bg-slate-50/50">
+                    <div class="py-2.5">อา.</div><div class="py-2.5">จ.</div><div class="py-2.5">อ.</div><div class="py-2.5">พ.</div><div class="py-2.5">พฤ.</div><div class="py-2.5">ศ.</div><div class="py-2.5">ส.</div>
+                </div>
+                <div id="calendarDays" class="calendar-grid"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Assign -->
+<div id="assignModal" class="modal">
+    <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-black text-slate-800">มอบหมายภารกิจ</h3>
+            <button onclick="closeModal('assign')" class="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+        </div>
+        <form id="assignForm" class="space-y-4">
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">สายงานผู้รับผิดชอบ</label>
+                <select id="teamSelect" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm font-bold bg-slate-50"></select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">วันที่ดำเนินการ</label>
+                    <input type="date" id="taskDate" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm font-bold" required>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">ความสำคัญ</label>
+                    <select id="taskPriority" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm font-bold">
+                        <option value="normal">ปกติ</option>
+                        <option value="high">‼️ ด่วนมาก</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">หัวข้อภารกิจ</label>
+                <input type="text" id="taskTitle" placeholder="ระบุชื่องาน..." class="w-full border border-slate-200 rounded-xl p-2.5 text-sm font-bold" required>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">ไฟล์สั่งการ / รูปภาพอ้างอิง</label>
+                <input type="file" id="assignFileInput" multiple accept="image/*" onchange="handleFileSelect(event, 'assign')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                <div id="assignFilePreview" class="file-preview-grid"></div>
+            </div>
+            <button type="submit" class="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-black text-sm shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">บันทึกและส่งงาน</button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Report -->
+<div id="reportModal" class="modal">
+    <div class="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-black text-slate-800">รายงานความคืบหน้า</h3>
+            <button onclick="closeModal('report')" class="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+        </div>
+        
+        <div id="taskInfo" class="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100 relative overflow-hidden">
+            <div id="viewPriorityBadge" class="hidden absolute top-0 right-0 bg-red-500 text-white text-[8px] font-black px-3 py-1 rounded-bl-lg uppercase tracking-tighter">ด่วนมาก</div>
+            <h4 id="viewTaskTitle" class="text-indigo-700 font-black text-md mb-0.5"></h4>
+            <p id="viewTaskOwner" class="text-slate-500 text-[10px] font-bold mb-3"></p>
+            <div id="assignFilesView" class="file-preview-grid border-t border-slate-200 pt-2"></div>
+        </div>
+
+        <form id="reportForm" class="space-y-4">
+            <input type="hidden" id="activeTaskId">
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">อัปเดตสถานะ</label>
+                <select id="reportStatus" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm font-black bg-slate-50">
+                    <option value="pending">🗓️ รอดำเนินการ</option>
+                    <option value="progress">⚡ ระหว่างดำเนินการ</option>
+                    <option value="done">✅ เสร็จสมบูรณ์</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">รายละเอียดผลการดำเนินงาน</label>
+                <textarea id="reportText" rows="3" placeholder="สรุปสิ่งที่ทำสำเร็จ หรือปัญหาอุปสรรค..." class="w-full border border-slate-200 rounded-xl p-2.5 text-sm font-bold"></textarea>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">แนบรูปถ่ายการทำงาน (หลายไฟล์)</label>
+                <input type="file" id="reportFileInput" multiple accept="image/*" onchange="handleFileSelect(event, 'report')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
+                <div id="reportFilePreview" class="file-preview-grid"></div>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-slate-50">
+                <button type="button" onclick="deleteTask()" class="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                <button type="submit" class="flex-1 py-3.5 bg-slate-900 text-white rounded-xl font-black text-sm shadow-xl hover:bg-black active:scale-95 transition-all">บันทึกผลงาน</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+    const teams = [
+        { id: 1, name: "1.ปรับปรุงระบบไฟฟ้า", owner: "โกวิท" },
+        { id: 2, name: "2.ซ่อมแซมระบบไฟฟ้า", owner: "รณภัทร" },
+        { id: 3, name: "3.ตัดต้นไม้", owner: "อภิรักษ์" },
+        { id: 4, name: "4.แก้ไขปัญหาระบบไฟฟ้า", owner: "วัชรินทร์" },
+        { id: 5, name: "5.ประสานงานขอดับไฟ", owner: "วัชฤทธิ์" },
+        { id: 6, name: "6.งานฮอทไลน์", owner: "กลศาสตร์" },
+        { id: 7, name: "7.Patrol 115 kV", owner: "กลศาสตร์" },
+        { id: 8, name: "8.Patrol 33 kV & อุปกรณ์", owner: "อดิศร" },
+        { id: 9, name: "9.Patrol 33 kV & ละเมิด", owner: "ธันวา" },
+        { id: 10, name: "10.งานก่อสร้าง & จ้างเหมา", owner: "นพดล" }
+    ];
+
+    let tasks = JSON.parse(localStorage.getItem('ผปบ_พพ_tasks_v5')) || [];
+    let currentAssignFiles = [];
+    let currentReportFiles = [];
+    let viewDate = new Date(2026, 2, 1); // เริ่มที่ มีนาคม 2569
+
+    window.onload = () => {
+        initSelectors();
+        renderCalendar();
+        renderTeamList();
+        populateTeamSelect();
+        updateDashboard();
+        lucide.createIcons();
+    };
+
+    function initSelectors() {
+        const sm = document.getElementById('selectMonth');
+        const sy = document.getElementById('selectYear');
+        thaiMonths.forEach((m, i) => sm.innerHTML += `<option value="${i}">${m}</option>`);
+        for(let y = 2024; y <= 2030; y++) sy.innerHTML += `<option value="${y}">${y + 543}</option>`;
+        
+        sm.value = viewDate.getMonth();
+        sy.value = viewDate.getFullYear();
+    }
+
+    function populateTeamSelect() {
+        const select = document.getElementById('teamSelect');
+        teams.forEach(t => select.innerHTML += `<option value="${t.id}">${t.name} (${t.owner})</option>`);
+    }
+
+    function updateDashboard() {
+        const total = tasks.length;
+        document.getElementById('dash-total').innerText = total;
+        document.getElementById('dash-pending').innerText = tasks.filter(t => t.status === 'pending').length;
+        document.getElementById('dash-progress').innerText = tasks.filter(t => t.status === 'progress').length;
+        document.getElementById('dash-done').innerText = tasks.filter(t => t.status === 'done').length;
+    }
+
+    function renderTeamList() {
+        const list = document.getElementById('teamList');
+        list.innerHTML = teams.map(t => `
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100 group hover:bg-indigo-50 transition-all">
+                <p class="text-[9px] font-black text-slate-400 group-hover:text-indigo-400 uppercase">${t.owner}</p>
+                <p class="text-[10px] font-bold text-slate-600 group-hover:text-indigo-900 leading-tight">${t.name}</p>
+            </div>
+        `).join('');
+    }
+
+    function changeMonth(dir) {
+        viewDate.setMonth(viewDate.getMonth() + dir);
+        document.getElementById('selectMonth').value = viewDate.getMonth();
+        document.getElementById('selectYear').value = viewDate.getFullYear();
+        renderCalendar();
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById('calendarDays');
+        grid.innerHTML = '';
+        
+        const month = parseInt(document.getElementById('selectMonth').value);
+        const year = parseInt(document.getElementById('selectYear').value);
+        viewDate = new Date(year, month, 1);
+
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        const filterStatus = document.getElementById('filterStatus').value;
+        const filterSearch = document.getElementById('filterSearch').value.toLowerCase();
+
+        // เติมช่องว่างวันก่อนหน้า
+        for (let i = 0; i < firstDay; i++) {
+            grid.innerHTML += `<div class="calendar-day bg-slate-50/30 opacity-20"></div>`;
+        }
+
+        for (let i = 1; i <= daysInMonth; i++) {
+            const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+            const dayTasks = tasks.filter(t => {
+                const team = teams.find(tm => tm.id == t.teamId);
+                const matchesDate = t.date === dateStr;
+                const matchesStatus = filterStatus === 'all' || t.status === filterStatus;
+                const matchesSearch = t.title.toLowerCase().includes(filterSearch) || team.owner.toLowerCase().includes(filterSearch);
+                return matchesDate && matchesStatus && matchesSearch;
+            });
+            
+            let taskHtml = dayTasks.map(t => {
+                const team = teams.find(tm => tm.id == t.teamId);
+                const priorityClass = t.priority === 'high' ? 'priority-high' : '';
+                const hasFiles = (t.assignFiles?.length || 0) + (t.reportFiles?.length || 0) > 0;
+                
+                return `
+                    <div onclick="openReportModal('${t.id}')" class="task-card status-${t.status} ${priorityClass} relative group">
+                        <div class="flex justify-between items-center opacity-60 font-black text-[8px] mb-0.5">
+                            <span>${team.owner}</span>
+                            ${hasFiles ? '<i data-lucide="paperclip" class="w-2 h-2"></i>' : ''}
+                        </div>
+                        <div class="font-bold truncate text-[9px]">${t.title}</div>
+                    </div>
+                `;
+            }).join('');
+
+            grid.innerHTML += `
+                <div class="calendar-day border-r border-b border-slate-100">
+                    <span class="text-[9px] font-black text-slate-300 block mb-1">${i}</span>
+                    <div class="space-y-0.5">${taskHtml}</div>
+                </div>
+            `;
+        }
+        lucide.createIcons();
+    }
+
+    function handleFileSelect(event, type) {
+        const files = Array.from(event.target.files);
+        const list = type === 'assign' ? currentAssignFiles : currentReportFiles;
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                list.push(e.target.result);
+                renderFilePreview(type);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function renderFilePreview(type) {
+        const preview = document.getElementById(`${type}FilePreview`);
+        const list = type === 'assign' ? currentAssignFiles : currentReportFiles;
+        preview.innerHTML = list.map((src, index) => `
+            <div class="file-item group">
+                <img src="${src}" />
+                <div onclick="removeFile('${type}', ${index})" class="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 flex items-center justify-center text-[10px] cursor-pointer opacity-0 group-hover:opacity-100">×</div>
+            </div>
+        `).join('');
+    }
+
+    function removeFile(type, index) {
+        if(type === 'assign') currentAssignFiles.splice(index, 1);
+        else currentReportFiles.splice(index, 1);
+        renderFilePreview(type);
+    }
+
+    function openModal(type) {
+        document.getElementById(type + 'Modal').classList.add('active');
+    }
+
+    function closeModal(type) {
+        document.getElementById(type + 'Modal').classList.remove('active');
+        currentAssignFiles = [];
+        currentReportFiles = [];
+        document.getElementById('assignFilePreview').innerHTML = '';
+        document.getElementById('reportFilePreview').innerHTML = '';
+        document.getElementById('assignForm').reset();
+        document.getElementById('reportForm').reset();
+    }
+
+    document.getElementById('assignForm').onsubmit = (e) => {
+        e.preventDefault();
+        const newTask = {
+            id: 'T-' + Date.now(),
+            teamId: document.getElementById('teamSelect').value,
+            title: document.getElementById('taskTitle').value,
+            date: document.getElementById('taskDate').value,
+            priority: document.getElementById('taskPriority').value,
+            status: 'pending',
+            report: '',
+            assignFiles: [...currentAssignFiles],
+            reportFiles: []
+        };
+        tasks.push(newTask);
+        saveTasks();
+        closeModal('assign');
+        renderCalendar();
+        updateDashboard();
+    };
+
+    function openReportModal(id) {
+        const task = tasks.find(t => t.id === id);
+        const team = teams.find(tm => tm.id == task.teamId);
+        document.getElementById('activeTaskId').value = id;
+        document.getElementById('viewTaskTitle').innerText = task.title;
+        document.getElementById('viewTaskOwner').innerText = `${team.name} / ผู้รับผิดชอบ: ${team.owner}`;
+        document.getElementById('reportText').value = task.report || '';
+        document.getElementById('reportStatus').value = task.status;
+        
+        const badge = document.getElementById('viewPriorityBadge');
+        if(task.priority === 'high') badge.classList.remove('hidden'); else badge.classList.add('hidden');
+
+        document.getElementById('assignFilesView').innerHTML = (task.assignFiles || []).map(src => `<div class="file-item"><img src="${src}" /></div>`).join('');
+        currentReportFiles = [...(task.reportFiles || [])];
+        renderFilePreview('report');
+        openModal('report');
+    }
+
+    document.getElementById('reportForm').onsubmit = (e) => {
+        e.preventDefault();
+        const id = document.getElementById('activeTaskId').value;
+        const idx = tasks.findIndex(t => t.id === id);
+        tasks[idx].report = document.getElementById('reportText').value;
+        tasks[idx].status = document.getElementById('reportStatus').value;
+        tasks[idx].reportFiles = [...currentReportFiles];
+        saveTasks();
+        closeModal('report');
+        renderCalendar();
+        updateDashboard();
+    };
+
+    function deleteTask() {
+        if(!confirm("ยืนยันการลบภารกิจ?")) return;
+        const id = document.getElementById('activeTaskId').value;
+        tasks = tasks.filter(t => t.id !== id);
+        saveTasks();
+        closeModal('report');
+        renderCalendar();
+        updateDashboard();
+    }
+
+    function saveTasks() {
+        try { localStorage.setItem('ผปบ_พพ_tasks_v5', JSON.stringify(tasks)); }
+        catch(e) { alert("หน่วยความจำเต็ม: กรุณาลบงานเก่าๆ หรือลดขนาดรูปภาพ"); }
+    }
+
+    function exportReport() {
+        let csv = "data:text/csv;charset=utf-8,\uFEFFTanggal,Tugas,Penanggung Jawab,Status,Laporan\n";
+        tasks.forEach(t => {
+            const team = teams.find(tm => tm.id == t.teamId);
+            csv += `"${t.date}","${t.title}","${team.owner}","${t.status}","${t.report}"\n`;
+        });
+        const encodedUri = encodeURI(csv);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "รายงาน_ผปบ_พพ.csv");
+        document.body.appendChild(link);
+        link.click();
+    }
+</script>
+</body>
+</html>
